@@ -1,0 +1,60 @@
+{
+  "name": "youtube-clip-discord",
+  "version": "1.0.0",
+  "description": "A Discord bot that plays mid-video, fixed length audio segments in a voice channel.",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "node dist/index.js",
+    "start:ts": "ts-node index.ts",
+    "build": "tsc",
+    "lint": "tsc --noEmit && eslint **/*.ts",
+    "docker-up": "docker run --rm -e TOKEN=abc123 -it $(docker build -q .)"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/charlocharlie/youtube-clip-discord.git"
+  },
+  "keywords": [
+    "ffmpeg",
+    "youtube",
+    "discord",
+    "bot"
+  ],
+  "author": "Charlie Laabs",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/charlocharlie/youtube-clip-discord/issues"
+  },
+  "homepage": "https://github.com/charlocharlie/youtube-clip-discord#readme",
+  "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.14",
+    "@types/node": "^12.12.37",
+    "@types/ws": "^7.2.4",
+    "@typescript-eslint/eslint-plugin": "^2.30.0",
+    "@typescript-eslint/parser": "^2.30.0",
+    "eslint": "^6.8.0",
+    "eslint-config-airbnb-base": "^14.1.0",
+    "eslint-config-prettier": "^6.11.0",
+    "eslint-plugin-import": "^2.20.2",
+    "eslint-plugin-prettier": "^3.1.3",
+    "prettier": "^2.0.5",
+    "ts-node": "^8.9.1",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "@discordjs/opus": "^0.2.1",
+    "bufferutil": "^4.0.1",
+    "discord.js": "^12.2.0",
+    "dotenv": "^8.2.0",
+    "erlpack": "^0.1.3",
+    "fluent-ffmpeg": "^2.1.2",
+    "google-auth-library": "^6.0.0",
+    "googleapis": "^49.0.0",
+    "iso8601-duration": "^1.2.0",
+    "sodium": "^3.0.2",
+    "source-map-support": "^0.5.19",
+    "utf-8-validate": "^5.0.2",
+    "ytdl-core": "^2.1.1",
+    "zlib-sync": "^0.1.6"
+  }
+}
