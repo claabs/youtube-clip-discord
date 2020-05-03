@@ -84,7 +84,7 @@ export default class YouTubeManager {
     this.channelUsername = channelUsername;
   }
 
-  public async getChannelVideos(): Promise<FullVideoDetails[]> {
+  private async getChannelVideos(): Promise<FullVideoDetails[]> {
     const youtube = google.youtube('v3');
     const channel = await youtube.channels.list({
       auth: youtubeApiKey,
@@ -152,7 +152,7 @@ export default class YouTubeManager {
     return this.channelVideos;
   }
 
-  public selectRandomVideoClip(desiredClipLength: number): VideoClip {
+  private selectRandomVideoClip(desiredClipLength: number): VideoClip {
     let timeAccum = 0;
     const accumVideos: VideoAccum[] = this.channelVideos.map((video) => {
       const durationSec = duration.toSeconds(duration.parse(video.duration));
@@ -189,7 +189,7 @@ export default class YouTubeManager {
     };
   }
 
-  public returnRandomStream(desiredClipLength: number): ClipData {
+  public returnRandomClip(desiredClipLength: number): ClipData {
     const clip = this.selectRandomVideoClip(desiredClipLength);
     const filename = `${DOWNLOAD_DIR}/${clip.id}.opus`;
     console.log(
@@ -202,18 +202,19 @@ export default class YouTubeManager {
     };
   }
 
-  public async cacheChannelVideos(): Promise<void> {
+  private async cacheChannelVideos(): Promise<void> {
     if (!fs.existsSync(DOWNLOAD_DIR)) {
       fs.mkdirSync(DOWNLOAD_DIR);
     }
     const downloadPromises = this.channelVideos.map((video) => downloadPromise(video.id));
     await Promise.all(downloadPromises);
     console.log('Finished downloading all videos');
-    this.ready = true;
   }
 
-  public async init(): Promise<void> {
+  public async updateCache(): Promise<void> {
+    this.ready = false;
     await this.getChannelVideos();
     await this.cacheChannelVideos();
+    this.ready = true;
   }
 }
