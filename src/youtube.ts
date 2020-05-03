@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import 'source-map-support/register';
 import { config } from 'dotenv';
 import ffmpeg from 'fluent-ffmpeg';
@@ -12,11 +11,13 @@ config();
 interface VideoSnippetInfoPartial {
   videoId?: string | null;
   publishedAt?: string | null;
+  title?: string | null;
 }
 
 interface VideoSnippetInfo {
   videoId: string;
   publishedAt: string;
+  title: string;
 }
 
 interface VideoDetails {
@@ -26,11 +27,14 @@ interface VideoDetails {
 
 interface FullVideoDetails extends VideoDetails {
   publishedAt?: string;
+  title?: string;
 }
 
 interface VideoAccum extends VideoDetails {
   durationSec: number;
   accumTime: number;
+  title: string;
+  publishedAt: string;
 }
 
 interface VideoClip extends VideoAccum {
@@ -42,6 +46,7 @@ interface ClipData {
   filename: string;
   length: number;
   startTime: number;
+  title: string;
 }
 
 const DOWNLOAD_DIR = 'config';
@@ -76,55 +81,73 @@ async function downloadPromise(videoId: string): Promise<void> {
 export default class YouTubeManager {
   private channelUsername: string;
 
+  public channelTitle: string;
+
   private channelVideos: FullVideoDetails[] = [];
 
   public ready = false;
 
   constructor(channelUsername: string) {
     this.channelUsername = channelUsername;
+    this.channelTitle = channelUsername;
   }
 
   private async getChannelVideos(): Promise<FullVideoDetails[]> {
+    console.log('Gathering channel videos');
     const youtube = google.youtube('v3');
+
+    // Get channel info
     const channel = await youtube.channels.list({
       auth: youtubeApiKey,
       forUsername: this.channelUsername,
       part: 'contentDetails',
     });
-    console.log('channel', channel);
+    // console.log('channel', channel);
     const uploadsPlaylists = channel.data.items?.map(
       (content) => content.contentDetails?.relatedPlaylists?.uploads
     );
     if (!uploadsPlaylists || !uploadsPlaylists[0]) throw new Error('Missing upload playlist');
     const playlistId = uploadsPlaylists[0];
     console.log('playlistId', playlistId);
+
+    // Get upload playlist info
     const videosResp = await youtube.playlistItems.list({
       auth: youtubeApiKey,
       playlistId,
       maxResults: 50,
       part: 'snippet',
     });
-    console.log('videosResp', videosResp);
+    // console.log('videosResp', videosResp);
     if (!videosResp.data.items) throw new Error('No playlist video items');
+    if (videosResp.data.items[0].snippet?.channelTitle) {
+      this.channelTitle = videosResp.data.items[0].snippet.channelTitle;
+    }
     const playlistVideos: VideoSnippetInfoPartial[] = videosResp.data.items.map((item) => {
-      return { videoId: item.snippet?.resourceId?.videoId, publishedAt: item.snippet?.publishedAt };
+      return {
+        videoId: item.snippet?.resourceId?.videoId,
+        publishedAt: item.snippet?.publishedAt,
+        title: item.snippet?.title,
+      };
     });
     if (!playlistVideos) throw new Error('Missing playlist videos');
     const filteredVideos = playlistVideos.filter((item): item is VideoSnippetInfo => {
       return (
         item.publishedAt !== null &&
         item.publishedAt !== undefined &&
+        item.title !== null &&
+        item.title !== undefined &&
         item.videoId !== null &&
         item.videoId !== undefined
       );
     });
 
+    // Get videos details
     const videoDetailsResp = await youtube.videos.list({
       auth: youtubeApiKey,
       id: filteredVideos.map((item) => item.videoId).join(','),
       part: 'contentDetails',
     });
-    console.log('videoDetailsResp', videoDetailsResp);
+    // console.log('videoDetailsResp', videoDetailsResp);
 
     if (!videoDetailsResp.data.items) throw new Error('Missing video detail items');
     const videoDetails: VideoDetails[] = videoDetailsResp.data.items
@@ -143,9 +166,11 @@ export default class YouTubeManager {
         );
       });
     this.channelVideos = videoDetails.map((video) => {
+      const match = filteredVideos.find((vid) => vid.videoId === video.id);
       return {
         ...video,
-        publishedAt: filteredVideos.find((vid) => vid.videoId === video.id)?.publishedAt,
+        publishedAt: match?.publishedAt,
+        title: match?.title,
       };
     });
 
@@ -160,6 +185,8 @@ export default class YouTubeManager {
         ...video,
         durationSec,
         accumTime: timeAccum,
+        publishedAt: video.publishedAt as string,
+        title: video.title || '<no title>',
       };
       timeAccum += durationSec;
       return clip;
@@ -186,6 +213,7 @@ export default class YouTubeManager {
       ...selectedVideo,
       clipStartTime: clipStartPoint,
       clipLenth: actualClipLength,
+      title: selectedVideo.title,
     };
   }
 
@@ -199,6 +227,7 @@ export default class YouTubeManager {
       filename,
       length: desiredClipLength,
       startTime: clip.clipStartTime,
+      title: clip.title,
     };
   }
 

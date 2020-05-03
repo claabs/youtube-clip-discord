@@ -16,7 +16,8 @@ module.exports = {
   },
   plugins: ['@typescript-eslint'],
   rules: {
-    'import/extensions': 0
+    'import/extensions': 0,
+    'no-console': 0
   },
   settings: {
     'import/extensions': ['.js', '.ts',],
