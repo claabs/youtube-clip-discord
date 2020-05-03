@@ -1,2 +1,24 @@
 # youtube-clip-discord
+
 A Discord bot that plays mid-video, fixed length audio segments in a voice channel.
+
+## Docker Congifuration
+
+### Environment Variables
+
+| Variable         | Example                                                       | Default | Description                                                                                                              |
+|------------------|---------------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------|
+| BOT_TOKEN        | `k5NzE2NDg1MTIwMjc0ODQ0Nj.DSnXwg.ttNotARealToken5p3WfDoUxhiH` |         | Bot token. See [bot applications](https://discordapp.com/developers/applications/)                                       |
+| CHANNEL_USERNAME | `charlocharlieL`                                              |         | Username for the YouTube account, typically in the URL                                                                   |
+| YOUTUBE_API_KEY  | `psHi6lEseHEa6XACYv_7bXeb-edv6mwG`                            |         | Server-to-server API key for the [YouTube Data V3 API](https://developers.google.com/youtube/registering_an_application) |
+| COMMAND_PREFIX   | `!play`                                                       | `!play` | The command trigger phrase                                                                                               |
+| BOT_COLOR        | `1234`                                                        | none    | A hex color converted to decimal                                                                                         |
+| CLIP_DURATION    | `5`                                                           | `10`    | Duration in seconds that the clip will run for                                                                           |
+| VOLUME           | `0.7`                                                         | `0.5`   | A value between 0 and 2 for volume. 1 is normal                                                                          |
+| TZ               | `America/Chicago`                                             | `UTC`   | (Optional) [TZ name](https://en.wikipedia.org/wiki/List_of_tz_database_time_zones)                                       |
+
+### Volumes
+
+| Host location   | Container location    | Mode | Description                        |
+|-----------------|-----------------------|------|------------------------------------|
+| `/my/host/dir/` | `/usr/src/bot/config` | `rw` | Location of the cached audio files |
