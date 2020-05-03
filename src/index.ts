@@ -2,31 +2,36 @@ import 'source-map-support/register';
 import { config } from 'dotenv';
 
 import discordjs from 'discord.js';
-import { getChannelVideos, returnRandomStream } from './youtube';
+import YouTubeManager from './youtube';
 
 config();
 
 const client = new discordjs.Client();
-const channelId = process.env.CHANNEL_USERNAME || 'invalid';
+const channelUsername = process.env.CHANNEL_USERNAME || 'invalid';
 const botToken = process.env.BOT_TOKEN || 'missing';
 
-getChannelVideos(channelId);
+const youtube = new YouTubeManager(channelUsername);
 
-function timeout(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+async function init(): Promise<void> {
+  await youtube.init();
+  client.login(botToken);
 }
 
-client.login(botToken);
+init();
+
+function timeout(sec: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, sec * 1000));
+}
 
 client.on('message', async (message) => {
   const voiceConnection = await message.member?.voice.channel?.join();
   if (voiceConnection) {
-    const clipStream = returnRandomStream(10);
-    const dispatcher = voiceConnection.play(clipStream.stream);
+    const clipStream = youtube.returnRandomStream(10);
+    const dispatcher = voiceConnection.play(clipStream.filename, { seek: clipStream.startTime });
     dispatcher.on('start', async () => {
-      await timeout(clipStream.length * 1000);
+      await timeout(clipStream.length);
       voiceConnection.disconnect();
-      clipStream.stream.destroy();
+      dispatcher.destroy();
     });
   }
 });
