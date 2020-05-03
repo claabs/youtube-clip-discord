@@ -8,7 +8,7 @@
     "start:ts": "ts-node index.ts",
     "build": "tsc",
     "lint": "tsc --noEmit && eslint **/*.ts",
-    "docker-up": "docker run --rm -e TOKEN=abc123 -it $(docker build -q .)"
+    "docker:build": "docker build . -t charlocharlie/youtube-clip-discord:latest"
   },
   "repository": {
     "type": "git",
