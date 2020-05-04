@@ -14,6 +14,7 @@ const BOT_COLOR = Number(process.env.BOT_COLOR) || undefined;
 const COMMAND_PREFIX = process.env.COMMAND_PREFIX || '!play';
 const CLIP_DURATION = Number(process.env.CLIP_DURATION) || 10;
 const VOLUME = Number(process.env.VOLUME) || 0.5;
+const STATUS_TIMEOUT = Number(process.env.STATUS_TIMEOUT) || 60;
 
 enum Command {
   PLAY,
@@ -25,9 +26,23 @@ const { version, author } = JSON.parse(fs.readFileSync('./package.json', 'utf8')
 
 const youtube = new YouTubeManager(CHANNEL_USERNAME);
 
-function timeout(sec: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, sec * 1000));
+// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+function timeout(sec: number) {
+  let timerId: number;
+  let endTimer: (reason?: string) => void;
+  class TimedPromise extends Promise<string> {
+    cancel = (reason?: string): void => {
+      endTimer(reason);
+      clearTimeout(timerId);
+    };
+  }
+  return new TimedPromise((resolve) => {
+    endTimer = resolve;
+    timerId = setTimeout(resolve, sec * 1000);
+  });
 }
+
+let statusTimeoutPromise: ReturnType<typeof timeout> | undefined;
 
 async function init(): Promise<void> {
   await youtube.updateCache();
@@ -36,18 +51,25 @@ async function init(): Promise<void> {
 
 async function setPlaying(title?: string): Promise<void> {
   if (client.user) {
+    let timeoutReason = '';
     console.log(`Setting status: ${title || 'no title'}`);
     if (title) {
+      if (statusTimeoutPromise) {
+        statusTimeoutPromise.cancel('reset');
+      }
       client.user.setActivity({
         type: 'PLAYING',
         name: `${title} | ${COMMAND_PREFIX}`,
       });
-      await timeout(300);
+      statusTimeoutPromise = timeout(STATUS_TIMEOUT);
+      timeoutReason = await statusTimeoutPromise;
     }
-    client.user.setActivity({
-      type: 'PLAYING',
-      name: `${youtube.channelTitle} | ${COMMAND_PREFIX}`,
-    });
+    if (timeoutReason !== 'reset') {
+      client.user.setActivity({
+        type: 'PLAYING',
+        name: `${youtube.channelTitle} | ${COMMAND_PREFIX}`,
+      });
+    }
   }
 }
 
