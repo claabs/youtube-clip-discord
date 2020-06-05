@@ -1,13 +1,16 @@
+/* eslint-disable import/prefer-default-export */
 import 'source-map-support/register';
 import { config } from 'dotenv';
 import schedule from 'node-schedule';
-import discordjs from 'discord.js';
+import discordjs, { GuildMember } from 'discord.js';
 import fs from 'fs';
 import YouTubeManager from './youtube';
+// eslint-disable-next-line import/no-cycle
+import { setupTwitch } from './twitch-event';
 
 config();
 
-const client = new discordjs.Client();
+export const client = new discordjs.Client();
 const CHANNEL_USERNAME = process.env.CHANNEL_USERNAME || 'invalid';
 const BOT_TOKEN = process.env.BOT_TOKEN || 'missing';
 const BOT_COLOR = Number(process.env.BOT_COLOR) || undefined;
@@ -44,11 +47,6 @@ function timeout(sec: number) {
 
 let statusTimeoutPromise: ReturnType<typeof timeout> | undefined;
 
-async function init(): Promise<void> {
-  await youtube.updateCache();
-  client.login(BOT_TOKEN);
-}
-
 async function setPlaying(title?: string): Promise<void> {
   if (client.user) {
     let timeoutReason = '';
@@ -71,6 +69,35 @@ async function setPlaying(title?: string): Promise<void> {
       });
     }
   }
+}
+
+export async function playAudio(
+  member: GuildMember | null,
+  duration = CLIP_DURATION
+): Promise<void> {
+  console.log('Handling play event');
+  const voiceConnection = await member?.voice.channel?.join();
+  if (!voiceConnection) {
+    console.error('Could not find user in voice');
+    return;
+  }
+  const clipData = youtube.returnRandomClip(duration);
+  setPlaying(clipData.title);
+  const dispatcher = voiceConnection.play(clipData.filename, {
+    seek: clipData.startTime,
+    volume: VOLUME,
+  });
+  dispatcher.on('start', async () => {
+    await timeout(clipData.length);
+    voiceConnection.disconnect();
+    dispatcher.destroy();
+  });
+}
+
+async function init(): Promise<void> {
+  await youtube.updateCache();
+  client.login(BOT_TOKEN);
+  await setupTwitch(client);
 }
 
 function prepareRichEmbed(): discordjs.MessageEmbedOptions {
@@ -164,21 +191,7 @@ client.on('message', async (message) => {
       };
       sendMessage({ embed: richEm }, message);
     } else if (command === Command.PLAY && youtube.ready) {
-      console.log('Handling play message');
-      const voiceConnection = await message.member?.voice.channel?.join();
-      if (voiceConnection) {
-        const clipData = youtube.returnRandomClip(CLIP_DURATION);
-        setPlaying(clipData.title);
-        const dispatcher = voiceConnection.play(clipData.filename, {
-          seek: clipData.startTime,
-          volume: VOLUME,
-        });
-        dispatcher.on('start', async () => {
-          await timeout(clipData.length);
-          voiceConnection.disconnect();
-          dispatcher.destroy();
-        });
-      }
+      playAudio(message.member);
     }
   }
 });

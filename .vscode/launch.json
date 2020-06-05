@@ -7,19 +7,6 @@
         {
             "type": "node",
             "request": "launch",
-            "name": "Debug Test User",
-            "runtimeArgs": [
-                "-r",
-                "ts-node/register"
-            ],
-            "args": [
-                "${workspaceFolder}/commands.ts",
-                "redeem"
-            ]
-        },
-        {
-            "type": "node",
-            "request": "launch",
             "name": "Debug Main",
             "runtimeArgs": [
                 "-r",

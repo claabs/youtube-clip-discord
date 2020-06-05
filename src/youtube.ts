@@ -191,7 +191,7 @@ export default class YouTubeManager {
       timeAccum += durationSec;
       return clip;
     });
-    console.log('accumVideos', accumVideos);
+    // console.log('accumVideos', accumVideos);
     const totalDuration = timeAccum;
     console.log('totalDuration', totalDuration);
     const randomTime = Math.floor(Math.random() * Math.floor(totalDuration));
