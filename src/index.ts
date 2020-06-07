@@ -2,7 +2,7 @@
 import 'source-map-support/register';
 import { config } from 'dotenv';
 import schedule from 'node-schedule';
-import discordjs, { GuildMember } from 'discord.js';
+import discordjs, { GuildMember, VoiceConnection } from 'discord.js';
 import fs from 'fs';
 import YouTubeManager from './youtube';
 // eslint-disable-next-line import/no-cycle
@@ -10,7 +10,22 @@ import { setupTwitch } from './twitch-event';
 
 config();
 
-export const client = new discordjs.Client();
+enum Command {
+  PLAY,
+  HELP,
+  INVITE,
+}
+
+interface PlayInfo {
+  member: GuildMember;
+  duration: number;
+}
+
+interface GuildQueue {
+  [guildId: string]: PlayInfo[];
+}
+
+const client = new discordjs.Client();
 const CHANNEL_USERNAME = process.env.CHANNEL_USERNAME || 'invalid';
 const BOT_TOKEN = process.env.BOT_TOKEN || 'missing';
 const BOT_COLOR = Number(process.env.BOT_COLOR) || undefined;
@@ -19,11 +34,7 @@ const CLIP_DURATION = Number(process.env.CLIP_DURATION) || 10;
 const VOLUME = Number(process.env.VOLUME) || 0.5;
 const STATUS_TIMEOUT = Number(process.env.STATUS_TIMEOUT) || 60;
 
-enum Command {
-  PLAY,
-  HELP,
-  INVITE,
-}
+const guildQueue: GuildQueue = {};
 
 const { version, author } = JSON.parse(fs.readFileSync('./package.json', 'utf8'));
 
@@ -71,17 +82,27 @@ async function setPlaying(title?: string): Promise<void> {
   }
 }
 
-export async function playAudio(
-  member: GuildMember | null,
-  duration = CLIP_DURATION
-): Promise<void> {
-  console.log('Handling play event');
-  const voiceConnection = await member?.voice.channel?.join();
-  if (!voiceConnection) {
-    console.error('Could not find user in voice');
+async function playAudio(guildId: string, connection?: VoiceConnection): Promise<void> {
+  console.log('Handling play event for guildId:', guildId);
+  const playQueue = guildQueue[guildId];
+  if (!(playQueue && playQueue.length)) {
+    console.error('Empty queue for guildId:', guildId);
+    if (connection) {
+      connection.disconnect();
+    }
     return;
   }
-  const clipData = youtube.returnRandomClip(duration);
+  const playInfo = playQueue[0];
+  if (!playInfo) {
+    await playAudio(guildId);
+    return;
+  }
+  const voiceConnection = await playInfo.member.voice.channel?.join();
+  if (!voiceConnection) {
+    await playAudio(guildId);
+    return;
+  }
+  const clipData = youtube.returnRandomClip(playInfo.duration);
   setPlaying(clipData.title);
   const dispatcher = voiceConnection.play(clipData.filename, {
     seek: clipData.startTime,
@@ -89,9 +110,26 @@ export async function playAudio(
   });
   dispatcher.on('start', async () => {
     await timeout(clipData.length);
-    voiceConnection.disconnect();
     dispatcher.destroy();
+    playQueue.shift();
+    await playAudio(guildId, voiceConnection);
   });
+  dispatcher.on('error', async () => {
+    dispatcher.destroy();
+    playQueue.shift();
+    await playAudio(guildId, voiceConnection);
+  });
+}
+
+export async function queueAudio(member: GuildMember, duration: number): Promise<void> {
+  const guildId = member.guild.id;
+  const playInfo: PlayInfo = { member, duration };
+  if (guildQueue[guildId] && guildQueue[guildId].length) {
+    guildQueue[guildId].push(playInfo);
+  } else {
+    guildQueue[guildId] = [playInfo];
+    playAudio(guildId);
+  }
 }
 
 async function init(): Promise<void> {
@@ -151,7 +189,7 @@ client.on('ready', async () => {
 });
 
 client.on('message', async (message) => {
-  if (message.guild) {
+  if (message.guild && message.member) {
     const command = validateMessage(message);
     if (command === Command.HELP) {
       console.log('Handling help message');
@@ -191,7 +229,9 @@ client.on('message', async (message) => {
       };
       sendMessage({ embed: richEm }, message);
     } else if (command === Command.PLAY && youtube.ready) {
-      playAudio(message.member);
+      console.log('Handling play message');
+      queueAudio(message.member, CLIP_DURATION);
+      console.log(guildQueue);
     }
   }
 });

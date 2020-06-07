@@ -12,7 +12,7 @@ import { VerifyCallback } from 'passport-oauth2';
 import { Strategy as TwitchStrategy, TwitchProfile } from 'passport-twitch-latest';
 import { Client } from 'discord.js';
 // eslint-disable-next-line import/no-cycle
-import { playAudio } from '.';
+import { queueAudio } from '.';
 
 interface SessionUser extends TwitchProfile {
   accessToken: string;
@@ -70,7 +70,7 @@ async function setupPubSub(client: Client): Promise<void> {
         console.error('Could not find streamer user in guild');
         return;
       }
-      await playAudio(member, TWITCH_DURATION);
+      await queueAudio(member, TWITCH_DURATION);
     }
   });
 }
