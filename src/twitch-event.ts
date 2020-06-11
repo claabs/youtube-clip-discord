@@ -53,6 +53,11 @@ async function setupPubSub(client: Client): Promise<void> {
   const twitchClient = TwitchClient.withCredentials(CLIENT_ID, userData.accessToken, [SCOPE], {
     clientSecret: CLIENT_SECRET,
     refreshToken: userData.refreshToken,
+    onRefresh: (tokens) => {
+      userData.accessToken = tokens.accessToken;
+      userData.refreshToken = tokens.refreshToken;
+      fs.writeFileSync(`./config/${TWITCH_USER}.json`, JSON.stringify(userData), 'utf8');
+    },
   });
   const twitchUser = userData.id;
 
