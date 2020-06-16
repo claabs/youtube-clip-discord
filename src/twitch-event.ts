@@ -75,7 +75,7 @@ async function setupPubSub(client: Client): Promise<void> {
         console.error('Could not find streamer user in guild');
         return;
       }
-      await queueAudio(member, TWITCH_DURATION);
+      queueAudio(member, TWITCH_DURATION);
     }
   });
 }
