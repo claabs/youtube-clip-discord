@@ -94,11 +94,13 @@ async function playAudio(guildId: string, connection?: VoiceConnection): Promise
   }
   const playInfo = playQueue[0];
   if (!playInfo) {
+    playQueue.shift();
     await playAudio(guildId);
     return;
   }
   const voiceConnection = await playInfo.member.voice.channel?.join();
   if (!voiceConnection) {
+    playQueue.shift();
     await playAudio(guildId);
     return;
   }
