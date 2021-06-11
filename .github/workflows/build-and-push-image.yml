@@ -41,4 +41,4 @@ jobs:
             ghcr.io/${{ github.repository }}:${{ github.sha }}
 
       - name: Image digest
-        run: echo ${{ steps.docker_build.outputs.digest }}
+        run: echo ${{ steps.docker_build_push.outputs.digest }}
