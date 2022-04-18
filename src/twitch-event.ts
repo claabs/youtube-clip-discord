@@ -1,7 +1,6 @@
 /* eslint-disable import/prefer-default-export */
-/* eslint-disable @typescript-eslint/camelcase */
-import PubSubClient, { PubSubRedemptionMessage } from 'twitch-pubsub-client';
-import TwitchClient from 'twitch';
+import { PubSubClient, PubSubRedemptionMessage } from '@twurple/pubsub';
+import { AccessToken, RefreshingAuthProvider } from '@twurple/auth';
 import express from 'express';
 import passport from 'passport';
 import fs from 'fs';
@@ -14,10 +13,7 @@ import { Client } from 'discord.js';
 // eslint-disable-next-line import/no-cycle
 import { queueAudio } from '.';
 
-interface SessionUser extends TwitchProfile {
-  accessToken: string;
-  refreshToken: string;
-}
+type SessionUser = TwitchProfile & AccessToken;
 
 const SCOPE = 'channel:read:redemptions';
 const TWITCH_DURATION = Number(process.env.TWITCH_DURATION) || 10;
@@ -50,24 +46,35 @@ async function setupPubSub(client: Client): Promise<void> {
     console.log('No user sessions');
     return;
   }
-  const twitchClient = TwitchClient.withCredentials(CLIENT_ID, userData.accessToken, [SCOPE], {
-    clientSecret: CLIENT_SECRET,
-    refreshToken: userData.refreshToken,
-    onRefresh: (tokens) => {
-      userData.accessToken = tokens.accessToken;
-      userData.refreshToken = tokens.refreshToken;
-      fs.writeFileSync(`./config/${TWITCH_USER}.json`, JSON.stringify(userData), 'utf8');
+  const authProvider = new RefreshingAuthProvider(
+    {
+      clientId: CLIENT_ID,
+      clientSecret: CLIENT_SECRET,
+      onRefresh: (newTokenData) => {
+        userData = {
+          ...userData,
+          ...newTokenData,
+        };
+        fs.writeFileSync(`./config/${TWITCH_USER}.json`, JSON.stringify(userData), 'utf8');
+      },
     },
-  });
+    {
+      expiresIn: userData.expiresIn,
+      obtainmentTimestamp: userData.obtainmentTimestamp,
+      refreshToken: userData.refreshToken,
+      accessToken: userData.accessToken,
+      scope: [SCOPE],
+    }
+  );
   const twitchUser = userData.id;
 
   const pubSubClient = new PubSubClient();
   console.log('Registering listener');
-  await pubSubClient.registerUserListener(twitchClient, twitchUser);
+  await pubSubClient.registerUserListener(authProvider, twitchUser);
 
   await pubSubClient.onRedemption(twitchUser, async (message: PubSubRedemptionMessage) => {
     console.log(`Channel point event: ${JSON.stringify(message)}`);
-    if (message.rewardName.toLowerCase().includes(REDEMPTION_EVENT_MATCH)) {
+    if (message.rewardTitle.toLowerCase().includes(REDEMPTION_EVENT_MATCH)) {
       console.log('Its a Croint event!');
       const guild = client.guilds.cache.get(PRIMARY_GUILD_ID);
       const member = guild?.members.cache.get(STREAMER_DISCORD_ID);
@@ -117,7 +124,7 @@ export async function setupTwitch(client: Client): Promise<void> {
   });
 
   passport.deserializeUser((user, done) => {
-    done(null, user);
+    done(null, user as Express.User);
   });
 
   passport.use(
@@ -136,7 +143,14 @@ export async function setupTwitch(client: Client): Promise<void> {
         console.log('ACCESS TOKEN:', accessToken);
         console.log('REFRESH TOKEN:', refreshToken);
         // console.log('PROFILE:', profile);
-        const user: SessionUser = { ...profile, accessToken, refreshToken };
+        const user: SessionUser = {
+          ...profile,
+          accessToken,
+          refreshToken,
+          obtainmentTimestamp: Date.now(),
+          expiresIn: 15 * 60,
+          scope: [SCOPE],
+        };
         fs.writeFileSync(`./config/${TWITCH_USER}.json`, JSON.stringify(user), 'utf8');
         verified(null, user);
       }

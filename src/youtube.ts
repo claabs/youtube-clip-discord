@@ -94,13 +94,15 @@ export default class YouTubeManager {
 
   private async getChannelVideos(): Promise<FullVideoDetails[]> {
     console.log('Gathering channel videos');
-    const youtube = google.youtube('v3');
+    const youtube = google.youtube({
+      version: 'v3',
+      auth: youtubeApiKey,
+    });
 
     // Get channel info
     const channel = await youtube.channels.list({
-      auth: youtubeApiKey,
       forUsername: this.channelUsername,
-      part: 'contentDetails',
+      part: ['contentDetails'],
     });
     // console.log('channel', channel);
     const uploadsPlaylists = channel.data.items?.map(
@@ -112,10 +114,9 @@ export default class YouTubeManager {
 
     // Get upload playlist info
     const videosResp = await youtube.playlistItems.list({
-      auth: youtubeApiKey,
       playlistId,
       maxResults: 50,
-      part: 'snippet',
+      part: ['snippet'],
     });
     // console.log('videosResp', videosResp);
     if (!videosResp.data.items) throw new Error('No playlist video items');
@@ -143,9 +144,8 @@ export default class YouTubeManager {
 
     // Get videos details
     const videoDetailsResp = await youtube.videos.list({
-      auth: youtubeApiKey,
-      id: filteredVideos.map((item) => item.videoId).join(','),
-      part: 'contentDetails',
+      id: filteredVideos.map((item) => item.videoId),
+      part: ['contentDetails'],
     });
     // console.log('videoDetailsResp', videoDetailsResp);
 

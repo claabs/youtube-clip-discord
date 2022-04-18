@@ -1,7 +1,7 @@
 ########
 # BUILD
 ########
-FROM keymetrics/pm2:12-alpine as build
+FROM keymetrics/pm2:16-alpine as build
 WORKDIR /usr/src/bot
 
 COPY package*.json ./
@@ -29,7 +29,7 @@ RUN npm run build
 ########
 # DEPLOY
 ########
-FROM keymetrics/pm2:12-alpine
+FROM keymetrics/pm2:16-alpine
 WORKDIR /usr/src/bot
 
 VOLUME [ "/usr/src/bot/config" ]

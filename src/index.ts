@@ -43,9 +43,10 @@ const youtube = new YouTubeManager(CHANNEL_USERNAME);
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 function timeout(sec: number) {
   let timerId: number;
-  let endTimer: (reason?: string) => void;
+  let endTimer: (reason: string) => void;
   class TimedPromise extends Promise<string> {
-    cancel = (reason?: string): void => {
+    // eslint-disable-next-line class-methods-use-this
+    cancel = (reason: string): void => {
       endTimer(reason);
       clearTimeout(timerId);
     };
