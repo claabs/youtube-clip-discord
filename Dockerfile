@@ -12,12 +12,12 @@ RUN apk add --no-cache \
     autoconf \
     automake \
     git \
-    python \
+    python3 \
     make \
     gcc \
     g++ \
     && npm ci --only=production && \
-    apk del make gcc g++ python
+    apk del make gcc g++ python3
 
 # Copy all *.json, *.js, *.ts
 COPY . .
