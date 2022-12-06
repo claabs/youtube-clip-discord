@@ -62,7 +62,7 @@
     "googleapis": "^100.0.0",
     "iso8601-duration": "^2.1.1",
     "node-schedule": "^2.1.0",
-    "passport": "^0.5.2",
+    "passport": "^0.6.0",
     "passport-oauth2": "^1.6.1",
     "passport-twitch-latest": "^1.0.0",
     "session-file-store": "^1.5.0",
