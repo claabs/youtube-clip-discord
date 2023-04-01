@@ -1,7 +1,7 @@
 ########
 # BUILD
 ########
-FROM keymetrics/pm2:16-alpine as build
+FROM node:18-alpine as build
 WORKDIR /usr/src/bot
 
 COPY package*.json ./
@@ -16,7 +16,7 @@ RUN apk add --no-cache \
     make \
     gcc \
     g++ \
-    && npm ci --only=production && \
+    && npm ci --omit=dev && \
     apk del make gcc g++ python3
 
 # Copy all *.json, *.js, *.ts
@@ -29,8 +29,11 @@ RUN npm run build
 ########
 # DEPLOY
 ########
-FROM keymetrics/pm2:16-alpine
+FROM node:18-alpine
 WORKDIR /usr/src/bot
+
+ENV NODE_ENV=production
+ENV NPM_CONFIG_LOGLEVEL warn
 
 VOLUME [ "/usr/src/bot/config" ]
 
@@ -38,8 +41,6 @@ RUN apk update && \
     apk upgrade && \
     apk add ca-certificates \
     ffmpeg
-
-ENV NPM_CONFIG_LOGLEVEL warn
 
 # Steal node_modules from build image
 COPY --from=build /usr/src/bot/node_modules ./node_modules/
@@ -50,7 +51,6 @@ COPY --from=build /usr/src/bot/dist ./
 # Copy package.json for version number
 COPY package*.json ./
 
-# Copy PM2 config
-COPY ecosystem.config.js .
+USER node
 
-CMD [ "pm2-runtime", "start", "ecosystem.config.js" ]
+CMD [ "node", "index.js" ]

@@ -47,6 +47,7 @@ interface ClipData {
   length: number;
   startTime: number;
   title: string;
+  videoId: string;
 }
 
 const DOWNLOAD_DIR = 'config';
@@ -228,6 +229,7 @@ export default class YouTubeManager {
       length: desiredClipLength,
       startTime: clip.clipStartTime,
       title: clip.title,
+      videoId: clip.id,
     };
   }
 

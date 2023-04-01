@@ -1,31 +1,45 @@
 /* eslint-disable import/prefer-default-export */
 import 'source-map-support/register';
-import { config } from 'dotenv';
+import 'dotenv/config';
 import schedule from 'node-schedule';
-import discordjs, { GuildMember, VoiceConnection } from 'discord.js';
+import discordjs, { REST, Routes, SlashCommandBuilder } from 'discord.js';
+import {
+  joinVoiceChannel,
+  createAudioPlayer,
+  createAudioResource,
+  AudioPlayerStatus,
+  VoiceConnection,
+} from '@discordjs/voice';
 import fs from 'fs';
+import ffmpeg from 'fluent-ffmpeg';
+import os from 'os';
+import path from 'path';
+import { rm } from 'fs/promises';
 import YouTubeManager from './youtube';
 // eslint-disable-next-line import/no-cycle
 import { setupTwitch } from './twitch-event';
 
-config();
-
-enum Command {
-  PLAY,
-  HELP,
-  INVITE,
+interface ClipInfo {
+  duration: number;
+  tempFilename: string;
+  title: string;
 }
 
-interface PlayInfo {
-  member: GuildMember;
-  duration: number;
+interface PlayInfo extends ClipInfo {
+  member: discordjs.GuildMember;
 }
 
 interface GuildQueue {
   [guildId: string]: PlayInfo[];
 }
 
-const client = new discordjs.Client();
+const client = new discordjs.Client<true>({
+  intents: [
+    discordjs.GatewayIntentBits.Guilds,
+    discordjs.GatewayIntentBits.GuildMessages,
+    discordjs.GatewayIntentBits.GuildVoiceStates,
+  ],
+});
 const CHANNEL_USERNAME = process.env.CHANNEL_USERNAME || 'invalid';
 const BOT_TOKEN = process.env.BOT_TOKEN || 'missing';
 const BOT_COLOR = Number(process.env.BOT_COLOR) || undefined;
@@ -68,7 +82,7 @@ async function setPlaying(title?: string): Promise<void> {
         statusTimeoutPromise.cancel('reset');
       }
       client.user.setActivity({
-        type: 'PLAYING',
+        type: discordjs.ActivityType.Playing,
         name: `${title} | ${COMMAND_PREFIX}`,
       });
       statusTimeoutPromise = timeout(STATUS_TIMEOUT);
@@ -76,81 +90,155 @@ async function setPlaying(title?: string): Promise<void> {
     }
     if (timeoutReason !== 'reset') {
       client.user.setActivity({
-        type: 'PLAYING',
+        type: discordjs.ActivityType.Playing,
         name: `${youtube.channelTitle} | ${COMMAND_PREFIX}`,
       });
     }
   }
 }
 
-async function playAudio(guildId: string, connection?: VoiceConnection): Promise<void> {
-  console.log('Handling play event for guildId:', guildId);
-  const playQueue = guildQueue[guildId];
-  if (!(playQueue && playQueue.length)) {
-    console.error('Empty queue for guildId:', guildId);
-    if (connection) {
-      connection.disconnect();
-    }
-    return;
-  }
-  const playInfo = playQueue[0];
-  if (!playInfo) {
-    playQueue.shift();
-    await playAudio(guildId);
-    return;
-  }
-  const voiceConnection = await playInfo.member.voice.channel?.join();
-  if (!voiceConnection) {
-    playQueue.shift();
-    await playAudio(guildId);
-    return;
-  }
-  const clipData = youtube.returnRandomClip(playInfo.duration);
-  setPlaying(clipData.title);
-  const dispatcher = voiceConnection.play(clipData.filename, {
-    seek: clipData.startTime,
-    volume: VOLUME,
-  });
-  dispatcher.on('start', async () => {
-    await timeout(clipData.length);
-    dispatcher.destroy();
-    playQueue.shift();
-    await playAudio(guildId, voiceConnection);
-  });
-  dispatcher.on('error', async () => {
-    dispatcher.destroy();
-    playQueue.shift();
-    await playAudio(guildId, voiceConnection);
+async function playAudio(playInfo: PlayInfo, voiceConnection: VoiceConnection): Promise<void> {
+  const audioResource = createAudioResource(playInfo.tempFilename, {});
+  const player = createAudioPlayer();
+  console.log('subscribing voice connection to player');
+  const subscription = voiceConnection.subscribe(player);
+  console.log('playing audio resource');
+  player.play(audioResource);
+  setPlaying(playInfo.title);
+  await new Promise((resolve, reject) => {
+    player.on('stateChange', async (_oldState, newState) => {
+      if (newState.status === AudioPlayerStatus.Idle) {
+        console.log('Stopping player and unsubscribing');
+        player.stop();
+        if (subscription) subscription.unsubscribe();
+        resolve(null);
+      }
+    });
+    player.on('error', async (error) => {
+      player.stop();
+      if (subscription) subscription.unsubscribe();
+      reject(error);
+    });
   });
 }
 
-export async function queueAudio(member: GuildMember, duration: number): Promise<void> {
+async function prepareAudio(duration: number): Promise<ClipInfo> {
+  const clipData = youtube.returnRandomClip(duration);
+  const tempFilename = path.resolve(
+    os.tmpdir(),
+    `${clipData.videoId}-${clipData.startTime}-${clipData.length}.ogg`
+  );
+  await new Promise((resolve, reject) => {
+    ffmpeg()
+      .input(clipData.filename)
+      .seekInput(clipData.startTime)
+      .duration(clipData.length)
+      .audioFilter(`volume=${VOLUME}`)
+      .format('ogg')
+      .audioCodec('libopus')
+      .pipe(fs.createWriteStream(tempFilename))
+      .on('finish', () => {
+        resolve(null);
+      })
+      .on('error', (err) => reject(err));
+  });
+  return {
+    tempFilename,
+    duration,
+    title: clipData.title,
+  };
+}
+
+async function joinAndPlayQueue(guildId: string) {
+  console.log('Handling join function for guildId:', guildId);
+  const playQueue = guildQueue[guildId];
+
+  let connectedChannel: discordjs.VoiceBasedChannel | undefined;
+  let voiceConnection: VoiceConnection | undefined;
+  do {
+    const playInfo = playQueue[0];
+    const voiceChannel = playInfo.member.voice.channel;
+    if (voiceChannel && connectedChannel?.id !== voiceChannel?.id) {
+      if (voiceConnection) voiceConnection.destroy();
+      console.log('Creating voice connection for channel:', voiceChannel.id);
+      voiceConnection = joinVoiceChannel({
+        channelId: voiceChannel.id,
+        guildId: voiceChannel.guild.id,
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+      });
+      // eslint-disable-next-line no-await-in-loop
+      await playAudio(playInfo, voiceConnection);
+    }
+    try {
+      rm(playInfo.tempFilename);
+    } catch (err) {
+      console.log('Trouble deleting temp file', err);
+    }
+    playQueue.shift();
+  } while (playQueue.length);
+  if (voiceConnection) voiceConnection.destroy();
+}
+
+export async function queueAudio(member: discordjs.GuildMember, duration: number): Promise<void> {
   const guildId = member.guild.id;
-  const playInfo: PlayInfo = { member, duration };
+  const clipInfo = await prepareAudio(duration);
+  const playInfo: PlayInfo = { member, ...clipInfo };
   if (guildQueue[guildId] && guildQueue[guildId].length) {
     guildQueue[guildId].push(playInfo);
   } else {
     guildQueue[guildId] = [playInfo];
-    playAudio(guildId);
+    await joinAndPlayQueue(guildId);
   }
+}
+
+async function deployCommands(): Promise<void> {
+  const playCommand = new SlashCommandBuilder()
+    .setName(COMMAND_PREFIX)
+    .setDescription(
+      `Plays a ${CLIP_DURATION} second clip from a random video of ${youtube.channelTitle}'s YouTube channel.`
+    );
+  const helpCommand = new SlashCommandBuilder()
+    .setName('help')
+    .setDescription(`Displays command and version info for this bot`);
+  const commands = [playCommand, helpCommand].map((command) => command.toJSON());
+  const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
+  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
 }
 
 async function init(): Promise<void> {
   await youtube.updateCache();
-  client.login(BOT_TOKEN);
+  await client.login(BOT_TOKEN);
+  await deployCommands();
+  const inviteUrl = client.generateInvite({
+    scopes: [discordjs.OAuth2Scopes.Bot, discordjs.OAuth2Scopes.ApplicationsCommands],
+    permissions: [
+      discordjs.PermissionFlagsBits.SendMessages,
+      discordjs.PermissionFlagsBits.EmbedLinks,
+      discordjs.PermissionFlagsBits.Connect,
+      discordjs.PermissionFlagsBits.Speak,
+    ],
+  });
+  console.log('Discord bot invite URL:', inviteUrl);
   await setupTwitch(client);
 }
 
-function prepareRichEmbed(): discordjs.MessageEmbedOptions {
-  const avatarURL = client.user?.avatarURL() || undefined;
+function prepareRichEmbed(
+  fields: discordjs.APIEmbedField[],
+  description?: string
+): discordjs.APIEmbed {
+  const avatarURL = client.user.avatarURL();
   return {
+    fields,
+    description,
     author: {
-      name: client.user?.username,
-      iconURL: avatarURL,
+      name: client.user.username,
+      icon_url: avatarURL || undefined,
     },
-    thumbnail: {
-      url: avatarURL,
-    },
+    thumbnail: avatarURL
+      ? {
+          url: avatarURL,
+        }
+      : undefined,
     color: BOT_COLOR,
     footer: {
       text: `${client.user?.username} v${version} by ${author}`,
@@ -158,84 +246,31 @@ function prepareRichEmbed(): discordjs.MessageEmbedOptions {
   };
 }
 
-/**
- * Reads a new message and checks if and which command it is.
- * @param message Message to be interpreted as a command
- * @return Command string
- */
-function validateMessage(message: discordjs.Message): Command | null {
-  const messageText = message.content.toLowerCase();
-  const thisPrefix = messageText.substring(0, COMMAND_PREFIX.length);
-  if (thisPrefix === COMMAND_PREFIX) {
-    const split = messageText.split(' ');
-    if (split[0] === COMMAND_PREFIX && split.length === 1) return Command.PLAY;
-    if (split[1] === 'help') return Command.HELP;
-    if (split[1] === 'invite') return Command.INVITE;
-  }
-  return null;
-}
-
-async function sendMessage(
-  message: discordjs.MessageOptions,
-  trigger: discordjs.Message
-): Promise<void> {
-  try {
-    await trigger.channel.send(message);
-  } catch (err) {
-    await trigger.author.send(message);
-  }
-}
-
 client.on('ready', async () => {
   console.log(`YouTube Clip Bot by ${author}`);
   setPlaying();
 });
 
-client.on('message', async (message) => {
-  if (message.guild && message.member) {
-    const command = validateMessage(message);
-    if (command === Command.HELP) {
-      console.log('Handling help message');
-      const richEm: discordjs.MessageEmbedOptions = {
-        ...prepareRichEmbed(),
-        description: `A voice bot that plays random audio segments from ${youtube.channelTitle}'s upload catalog.`,
-        fields: [
-          {
-            name: COMMAND_PREFIX,
-            value: `Plays a ${CLIP_DURATION} second clip from a random video of ${youtube.channelTitle}'s YouTube channel.`,
-            inline: false,
-          },
-          {
-            name: `${COMMAND_PREFIX} help`,
-            value: `Displays this help message.`,
-            inline: false,
-          },
-          {
-            name: `${COMMAND_PREFIX} invite`,
-            value: `Generates a link to invite this bot to a server near you!`,
-            inline: false,
-          },
-        ],
-      };
-      await sendMessage({ embed: richEm }, message);
-    } else if (command === Command.INVITE) {
-      console.log('Handling invite message');
-      const richEm: discordjs.MessageEmbedOptions = {
-        ...prepareRichEmbed(),
-        fields: [
-          {
-            name: 'Invite',
-            value: `[Invite ${client.user?.username} to your server](https://discordapp.com/oauth2/authorize?client_id=${client.user?.id}&scope=bot)`,
-            inline: false,
-          },
-        ],
-      };
-      sendMessage({ embed: richEm }, message);
-    } else if (command === Command.PLAY && youtube.ready) {
-      console.log('Handling play message');
-      queueAudio(message.member, CLIP_DURATION);
-      console.log(guildQueue);
-    }
+client.on(discordjs.Events.InteractionCreate, async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName === 'help') {
+    console.log('Handling help message');
+    const richEm = prepareRichEmbed(
+      [
+        {
+          name: COMMAND_PREFIX,
+          value: `Plays a ${CLIP_DURATION} second clip from a random video of ${youtube.channelTitle}'s YouTube channel.`,
+          inline: false,
+        },
+      ],
+      `A voice bot that plays random audio segments from ${youtube.channelTitle}'s upload catalog.`
+    );
+    await interaction.reply({ embeds: [richEm] });
+  } else if (interaction.commandName === COMMAND_PREFIX && youtube.ready) {
+    console.log('Handling play message');
+    if (!(interaction.member instanceof discordjs.GuildMember)) return;
+    await interaction.reply({ ephemeral: true, content: 'Understood' });
+    await queueAudio(interaction.member, CLIP_DURATION);
   }
 });
 

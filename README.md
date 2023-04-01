@@ -13,7 +13,7 @@ Also has an optional feature to play on a Twitch channel point redemption event.
 | BOT_TOKEN              | `k5NzE2NDg1MTIwMjcUxhiH`           |         | Bot token. See [bot applications](https://discordapp.com/developers/applications/)                                       |
 | CHANNEL_USERNAME       | `charlocharlieL`                   |         | Username for the YouTube account, typically in the URL                                                                   |
 | YOUTUBE_API_KEY        | `psHi6lEseHEa6XACYv_7bXeb-edv6mwG` |         | Server-to-server API key for the [YouTube Data V3 API](https://developers.google.com/youtube/registering_an_application) |
-| COMMAND_PREFIX         | `!play`                            | `!play` | The command trigger phrase                                                                                               |
+| COMMAND_PREFIX         | `play`                             | `play`  | The slash command trigger phrase                                                                                         |
 | BOT_COLOR              | `1234`                             | none    | A hex color converted to decimal                                                                                         |
 | CLIP_DURATION          | `5`                                | `10`    | Duration in seconds that the clip will run for                                                                           |
 | VOLUME                 | `0.7`                              | `0.5`   | A value between 0 and 2 for volume. 1 is normal                                                                          |
