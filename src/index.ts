@@ -23,6 +23,8 @@ interface ClipInfo {
   duration: number;
   tempFilename: string;
   title: string;
+  id: string;
+  startTime: number;
 }
 
 interface PlayInfo extends ClipInfo {
@@ -122,7 +124,7 @@ async function playAudio(playInfo: PlayInfo, voiceConnection: VoiceConnection): 
   });
 }
 
-async function prepareAudio(duration: number): Promise<ClipInfo> {
+export async function prepareAudio(duration: number): Promise<ClipInfo> {
   const clipData = youtube.returnRandomClip(duration);
   const tempFilename = path.resolve(
     os.tmpdir(),
@@ -146,6 +148,8 @@ async function prepareAudio(duration: number): Promise<ClipInfo> {
     tempFilename,
     duration,
     title: clipData.title,
+    id: clipData.videoId,
+    startTime: clipData.startTime,
   };
 }
 
@@ -179,9 +183,8 @@ async function joinAndPlayQueue(guildId: string) {
   if (voiceConnection) voiceConnection.destroy();
 }
 
-export async function queueAudio(member: discordjs.GuildMember, duration: number): Promise<void> {
+export async function queueAudio(member: discordjs.GuildMember, clipInfo: ClipInfo): Promise<void> {
   const guildId = member.guild.id;
-  const clipInfo = await prepareAudio(duration);
   const playInfo: PlayInfo = { member, ...clipInfo };
   if (guildQueue[guildId] && guildQueue[guildId].length) {
     guildQueue[guildId].push(playInfo);
@@ -269,8 +272,15 @@ client.on(discordjs.Events.InteractionCreate, async (interaction) => {
   } else if (interaction.commandName === COMMAND_PREFIX && youtube.ready) {
     console.log('Handling play message');
     if (!(interaction.member instanceof discordjs.GuildMember)) return;
-    await interaction.reply({ ephemeral: true, content: 'Understood' });
-    await queueAudio(interaction.member, CLIP_DURATION);
+    const clipInfo = await prepareAudio(CLIP_DURATION);
+    const row = new discordjs.ActionRowBuilder<discordjs.ButtonBuilder>().addComponents(
+      new discordjs.ButtonBuilder()
+        .setLabel('Source')
+        .setStyle(discordjs.ButtonStyle.Link)
+        .setURL(`https://youtu.be/${clipInfo.id}?t=${clipInfo.startTime}`)
+    );
+    await interaction.reply({ content: `Playing ${clipInfo.title}`, components: [row] });
+    await queueAudio(interaction.member, clipInfo);
   }
 });
 
