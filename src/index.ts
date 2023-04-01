@@ -279,7 +279,7 @@ client.on(discordjs.Events.InteractionCreate, async (interaction) => {
         .setStyle(discordjs.ButtonStyle.Link)
         .setURL(`https://youtu.be/${clipInfo.id}?t=${clipInfo.startTime}`)
     );
-    await interaction.reply({ content: `Playing ${clipInfo.title}`, components: [row] });
+    await interaction.reply({ content: `Playing **${clipInfo.title}**`, components: [row] });
     await queueAudio(interaction.member, clipInfo);
   }
 });
