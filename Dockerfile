@@ -1,28 +1,31 @@
 ########
-# BUILD
+# DEPS
 ########
-FROM node:18-alpine as build
+FROM node:18-alpine as deps
 WORKDIR /usr/src/bot
 
 COPY package*.json ./
-# Install build tools for erlpack, then install prod deps only, then remove build tools
+# Install build tools for erlpack, sodium, zlib-sync then install npm deps
 RUN apk add --no-cache \
-    ca-certificates \
     libtool \
     autoconf \
     automake \
-    git \
     python3 \
     make \
     gcc \
-    g++ \
-    && npm ci --omit=dev && \
-    apk del make gcc g++ python3
+    g++
 
+RUN npm ci --omit=dev
+
+########
+# BUILD
+########
+FROM deps as build
+
+# Add dev deps (don't `npm ci` as it would delete node_modules)
+RUN npm i
 # Copy all *.json, *.js, *.ts
 COPY . .
-# Prod deps already installed, add dev deps
-RUN npm i
 
 RUN npm run build
 
@@ -37,13 +40,12 @@ ENV NPM_CONFIG_LOGLEVEL warn
 
 VOLUME [ "/usr/src/bot/config" ]
 
-RUN apk update && \
-    apk upgrade && \
-    apk add ca-certificates \
+RUN apk add --no-cache \
+    ca-certificates \
     ffmpeg
 
 # Steal node_modules from build image
-COPY --from=build /usr/src/bot/node_modules ./node_modules/
+COPY --from=deps /usr/src/bot/node_modules ./node_modules/
 
 # Steal compiled code from build image
 COPY --from=build /usr/src/bot/dist ./
