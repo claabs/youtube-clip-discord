@@ -126,6 +126,7 @@ async function playAudio(playInfo: PlayInfo, voiceConnection: VoiceConnection): 
 
 export async function prepareAudio(duration: number): Promise<ClipInfo> {
   const clipData = youtube.returnRandomClip(duration);
+  console.log('Trimming clip with ffmpeg');
   const tempFilename = path.resolve(
     os.tmpdir(),
     `${clipData.videoId}-${clipData.startTime}-${clipData.length}.ogg`
@@ -184,6 +185,7 @@ async function joinAndPlayQueue(guildId: string) {
 }
 
 export async function queueAudio(member: discordjs.GuildMember, clipInfo: ClipInfo): Promise<void> {
+  console.log('queueing audio');
   const guildId = member.guild.id;
   const playInfo: PlayInfo = { member, ...clipInfo };
   if (guildQueue[guildId] && guildQueue[guildId].length) {
@@ -255,32 +257,37 @@ client.on('ready', async () => {
 });
 
 client.on(discordjs.Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName === 'help') {
-    console.log('Handling help message');
-    const richEm = prepareRichEmbed(
-      [
-        {
-          name: COMMAND_PREFIX,
-          value: `Plays a ${CLIP_DURATION} second clip from a random video of ${youtube.channelTitle}'s YouTube channel.`,
-          inline: false,
-        },
-      ],
-      `A voice bot that plays random audio segments from ${youtube.channelTitle}'s upload catalog.`
-    );
-    await interaction.reply({ embeds: [richEm] });
-  } else if (interaction.commandName === COMMAND_PREFIX && youtube.ready) {
-    console.log('Handling play message');
-    if (!(interaction.member instanceof discordjs.GuildMember)) return;
-    const clipInfo = await prepareAudio(CLIP_DURATION);
-    const row = new discordjs.ActionRowBuilder<discordjs.ButtonBuilder>().addComponents(
-      new discordjs.ButtonBuilder()
-        .setLabel('Source')
-        .setStyle(discordjs.ButtonStyle.Link)
-        .setURL(`https://youtu.be/${clipInfo.id}?t=${clipInfo.startTime}`)
-    );
-    await interaction.reply({ content: `Playing **${clipInfo.title}**`, components: [row] });
-    await queueAudio(interaction.member, clipInfo);
+  try {
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === 'help') {
+      console.log('Handling help message');
+      const richEm = prepareRichEmbed(
+        [
+          {
+            name: COMMAND_PREFIX,
+            value: `Plays a ${CLIP_DURATION} second clip from a random video of ${youtube.channelTitle}'s YouTube channel.`,
+            inline: false,
+          },
+        ],
+        `A voice bot that plays random audio segments from ${youtube.channelTitle}'s upload catalog.`
+      );
+      await interaction.reply({ embeds: [richEm] });
+    } else if (interaction.commandName === COMMAND_PREFIX && youtube.ready) {
+      console.log('Handling play message');
+      if (!(interaction.member instanceof discordjs.GuildMember)) return;
+      const clipInfo = await prepareAudio(CLIP_DURATION);
+      const row = new discordjs.ActionRowBuilder<discordjs.ButtonBuilder>().addComponents(
+        new discordjs.ButtonBuilder()
+          .setLabel('Source')
+          .setStyle(discordjs.ButtonStyle.Link)
+          .setURL(`https://youtu.be/${clipInfo.id}?t=${clipInfo.startTime}`)
+      );
+      console.log('Sending interaction reply');
+      await interaction.reply({ content: `Playing **${clipInfo.title}**`, components: [row] });
+      await queueAudio(interaction.member, clipInfo);
+    }
+  } catch (err) {
+    console.error(err);
   }
 });
 
