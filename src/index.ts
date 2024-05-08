@@ -166,13 +166,18 @@ async function joinAndPlayQueue(guildId: string) {
     if (voiceChannel && connectedChannel?.id !== voiceChannel?.id) {
       if (voiceConnection) voiceConnection.destroy();
       console.log('Creating voice connection for channel:', voiceChannel.id);
-      voiceConnection = joinVoiceChannel({
-        channelId: voiceChannel.id,
-        guildId: voiceChannel.guild.id,
-        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-      });
-      // eslint-disable-next-line no-await-in-loop
-      await playAudio(playInfo, voiceConnection);
+      try {
+        voiceConnection = joinVoiceChannel({
+          channelId: voiceChannel.id,
+          guildId: voiceChannel.guild.id,
+          adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+        });
+        // eslint-disable-next-line no-await-in-loop
+        await playAudio(playInfo, voiceConnection);
+      } catch (err) {
+        console.error(err);
+        playQueue.shift();
+      }
     }
     try {
       rm(playInfo.tempFilename);
