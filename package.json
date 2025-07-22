@@ -57,7 +57,7 @@
     "dotenv": "^16.0.3",
     "erlpack": "github:discord/erlpack",
     "express": "^5.0.1",
-    "express-session": "^1.18.1",
+    "express-session": "^1.18.2",
     "fluent-ffmpeg": "^2.1.2",
     "google-auth-library": "^7.14.1",
     "googleapis": "^100.0.0",
